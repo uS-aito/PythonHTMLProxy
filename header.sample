@@ -1,0 +1,20 @@
+Host: localhost:8080
+Proxy-Connection: keep-alive
+Cache-Control: max-age=0
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, li
+ke Gecko) Chrome/54.0.2840.71 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q
+=0.8
+Accept-Encoding: gzip, deflate, sdch, br
+Accept-Language: ja,en-US;q=0.8,en;q=0.6,pt;q=0.4
+
+127.0.0.1 - - [06/Nov/2016 14:21:28] code 404, message File not found
+127.0.0.1 - - [06/Nov/2016 14:21:28] "GET http://localhost:8080/ HTTP/1.1" 404
+ -
+
+User-Agent: curl/7.30.0
+Host: localhost:8080
+Accept: */*
+
+127.0.0.1 - - [06/Nov/2016 14:18:42] "GET / HTTP/1.1" 200 -
