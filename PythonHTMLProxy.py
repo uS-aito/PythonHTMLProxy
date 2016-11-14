@@ -3,6 +3,7 @@ import SimpleHTTPServer
 import SocketServer
 import sys
 import urllib2
+import re
 
 class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -13,32 +14,48 @@ class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
         # リクエスト取得
         splited_requestline = self.requestline.split()
+        print "<< HTTP Request >>"
         print splited_requestline
+        print ""
 
         # ヘッダ取得
         splited_request_headers = str(self.headers).split("\r\n")
+        print "<< HTTP Request Header >>"
         print splited_request_headers
+        print ""
 
         # ヘッダ整形
         dict_header = {}
         for header in splited_request_headers[:-1]:     # ヘッダ末尾の空行まで含むため
             splited_request_header = header.split(": ")
-            if splited_request_header[0] == "Host":     # 一時的にHostヘッダを無効化
-                pass                            # localhostへのリクエストを無理やりgoogleに投げているため
-            else:
-                dict_header.update({splited_request_header[0]:splited_request_header[1]})
+            dict_header.update({splited_request_header[0]:splited_request_header[1]})
+        print "<< HTTP Header in Dictionary >>"
         print dict_header
+        print ""
+    
+        # リクエストurlを取得
+        url_pattern = r"https*://.*[:[0-9]*]?/"
+        re_match_result = re.match(url_pattern,splited_requestline[1])
+        if re_match_result:
+            url = re_match_result.group()
+        else:
+            print "Any url does not exist in request line."
+            exit(-1)
 
         # ヘッダくっつけて投げる
-        url = "http://www.google.co.jp"
         req = urllib2.Request(url=url,headers=dict_header)
         response = urllib2.urlopen(req)
 
         # レスポンス確認
+        print "<< HTTP Response >>"
         print (response.code, response.msg) # コードとメッセージ
+        print ""
         response_info = response.info()     # レスポンスヘッダ
+        print "<< HTTP Response Header >>"
         print response_info
+        print ""
         response_data = response.read()     # レスポンスボディ
+        print "<< HTTP Response Body >>"
         print response_data
 
         # レスポンスをクライアントに返す
