@@ -1,11 +1,12 @@
 #coding: utf-8
-import SimpleHTTPServer
-import SocketServer
+from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+from SocketServer import ThreadingMixIn
 import sys
 import urllib2
 import re
+import threading
 
-class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+class ServerHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         # スタブ用返信を送信
         # self.send_response(200)
@@ -38,6 +39,11 @@ class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         else:
             print "Any url does not exist in request line."
             exit(-1)
+
+        # プロキシを無視するよう設定
+        unproxy_handler = urllib2.ProxyHandler({})
+        opener = urllib2.build_opener(unproxy_handler)
+        urllib2.install_opener(opener)
 
         # ヘッダくっつけて投げる
         req = urllib2.Request(url=url,headers=dict_request_header)
@@ -99,6 +105,9 @@ class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             self.wfile.write("0\r\n\r\n")
         return
 
+class ThreadedHTTPProxy(ThreadingMixIn, HTTPServer):
+    """ Handle requests in a separate thread. """
+
 if __name__ == "__main__":
     if len(sys.argv) == 2:
         try:
@@ -107,6 +116,8 @@ if __name__ == "__main__":
             port = 80
     else:
         port = 80
+    
     Handler = ServerHandler
+    server = ThreadedHTTPProxy(("",port), Handler)
     print "Starting server in " + str(port)
-    SocketServer.TCPServer(("", port), Handler).serve_forever()
+    server.serve_forever()
