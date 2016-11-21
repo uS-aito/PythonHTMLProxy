@@ -7,7 +7,7 @@ import re
 import threading
 
 class ServerHandler(BaseHTTPRequestHandler):
-    def handle_http_proxy(self):
+    def handle_http_proxy(self,method):
         # スタブ用返信を送信
         # self.send_response(200)
         # self.end_headers()
@@ -57,11 +57,12 @@ class ServerHandler(BaseHTTPRequestHandler):
         opener = urllib2.build_opener(unproxy_handler)
         urllib2.install_opener(opener)
 
-        # ヘッダくっつけて投げる
+        # ヘッダくっつけてメソッド指定して投げる
         if(content_len):
             req = urllib2.Request(url=url,headers=dict_request_header,data=http_body)
         else:                
             req = urllib2.Request(url=url,headers=dict_request_header)
+        req.get_method = lambda : method
         response = urllib2.urlopen(req)
 
         # レスポンス確認
@@ -101,49 +102,54 @@ class ServerHandler(BaseHTTPRequestHandler):
         # レスポンスをクライアントに返す
         # httpバージョンとコード、メッセージを返す
         self.send_response(code=response.code, message=response.msg)
+        print "DEBUG: HTTP response is send"
         # ヘッダを返す
         splited_response_headers = str(response_info).split("\r\n")
         for response_header in splited_response_headers[:-1]:
             splited_response_header = response_header.split(": ")
             self.send_header(splited_response_header[0],
                 splited_response_header[1])
+        print "DEBUG: HTTP header is send"
         # ヘッダをクローズする
         self.end_headers()
+        print "DEBUG: HTTP header is closed"
         # レスポンスを返す
         # Chunkedが指定されている場合長さを返す
         if is_chunked:
             self.wfile.write("%x\r\n" % len(response_data))
         # ボディそのものを返す
         self.wfile.write(response_data+"\r\n")
+        print "DEBUG: HTTP body is send"
         # Chunkedが指定されている場合0と空行を返す
         if is_chunked:
             self.wfile.write("0\r\n\r\n")
+        print "DEBUG: Class Method is returned"
         return
 
     # handle_http_proxyを全てのmethodに対して呼び出す
     def do_GET(self):
-        self.handle_http_proxy()
+        self.handle_http_proxy("GET")
     
     def do_HEAD(self):
-        self.handle_http_proxy()
+        self.handle_http_proxy("HEAD")
 
     def do_POST(self):
-        self.handle_http_proxy()
+        self.handle_http_proxy("POST")
 
     def do_PUT(self):
-        self.handle_http_proxy()
+        self.handle_http_proxy("PUT")
 
     def do_DELETE(self):
-        self.handle_http_proxy()
+        self.handle_http_proxy("DELETE")
 
     def do_CONNECT(self):
-        self.handle_http_proxy()
+        self.handle_http_proxy("CONNECT")
 
     def do_OPTIONS(self):
-        self.handle_http_proxy()
+        self.handle_http_proxy("OPTIONS")
 
     def do_TRACE(self):
-        self.handle_http_proxy()
+        self.handle_http_proxy("TRACE")
 
 class ThreadedHTTPProxy(ThreadingMixIn, HTTPServer):
     """ Handle requests in a separate thread. """
