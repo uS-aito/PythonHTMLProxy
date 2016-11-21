@@ -7,7 +7,7 @@ import re
 import threading
 
 class ServerHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
+    def handle_http_proxy(self):
         # スタブ用返信を送信
         # self.send_response(200)
         # self.end_headers()
@@ -40,13 +40,28 @@ class ServerHandler(BaseHTTPRequestHandler):
             print "Any url does not exist in request line."
             exit(-1)
 
+        # Content-Lengthを含むかチェック
+        content_len = 0
+        re_CL_patter = re.compile("Content-Length",re.IGNORECASE)  
+        for key in dict_request_header.keys():
+            re_CL_match_result = re_CL_patter.match(key)
+            if re_CL_match_result:
+                try:
+                    content_len = int(dict_request_header[key])
+                    http_body = self.rfile.read(content_len)
+                except:
+                    pass
+
         # プロキシを無視するよう設定
         unproxy_handler = urllib2.ProxyHandler({})
         opener = urllib2.build_opener(unproxy_handler)
         urllib2.install_opener(opener)
 
         # ヘッダくっつけて投げる
-        req = urllib2.Request(url=url,headers=dict_request_header)
+        if(content_len):
+            req = urllib2.Request(url=url,headers=dict_request_header,data=http_body)
+        else:                
+            req = urllib2.Request(url=url,headers=dict_request_header)
         response = urllib2.urlopen(req)
 
         # レスポンス確認
@@ -104,6 +119,31 @@ class ServerHandler(BaseHTTPRequestHandler):
         if is_chunked:
             self.wfile.write("0\r\n\r\n")
         return
+
+    # handle_http_proxyを全てのmethodに対して呼び出す
+    def do_GET(self):
+        self.handle_http_proxy()
+    
+    def do_HEAD(self):
+        self.handle_http_proxy()
+
+    def do_POST(self):
+        self.handle_http_proxy()
+
+    def do_PUT(self):
+        self.handle_http_proxy()
+
+    def do_DELETE(self):
+        self.handle_http_proxy()
+
+    def do_CONNECT(self):
+        self.handle_http_proxy()
+
+    def do_OPTIONS(self):
+        self.handle_http_proxy()
+
+    def do_TRACE(self):
+        self.handle_http_proxy()
 
 class ThreadedHTTPProxy(ThreadingMixIn, HTTPServer):
     """ Handle requests in a separate thread. """
