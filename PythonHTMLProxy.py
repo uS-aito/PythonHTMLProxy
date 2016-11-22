@@ -38,7 +38,7 @@ class ServerHandler(BaseHTTPRequestHandler):
             url = re_url_match_result.group()
             # connectメソッドはスキームをつけてこないのでつける
             if splited_requestline[0] == "CONNECT" or splited_requestline == "connect":
-                url = "https://"+url
+                url = "http://"+url
         else:
             print "Any url does not exist in request line."
             exit(-1)
