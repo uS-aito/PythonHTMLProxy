@@ -32,10 +32,13 @@ class ServerHandler(BaseHTTPRequestHandler):
         print dict_request_header, "\n"
     
         # リクエストurlを取得
-        url_pattern = r"https*://.*[:[0-9]*]?/"
+        url_pattern = r"[https?://]?.*[:[0-9]*]?/?"
         re_url_match_result = re.match(url_pattern,splited_requestline[1])
         if re_url_match_result:
             url = re_url_match_result.group()
+            # connectメソッドはスキームをつけてこないのでつける
+            if splited_requestline[0] == "CONNECT" or splited_requestline == "connect":
+                url = "https://"+url
         else:
             print "Any url does not exist in request line."
             exit(-1)
@@ -62,7 +65,7 @@ class ServerHandler(BaseHTTPRequestHandler):
             req = urllib2.Request(url=url,headers=dict_request_header,data=http_body)
         else:                
             req = urllib2.Request(url=url,headers=dict_request_header)
-        req.get_method = lambda : method
+        req.get_method = lambda : splited_requestline[0]
         response = urllib2.urlopen(req)
 
         # レスポンス確認
