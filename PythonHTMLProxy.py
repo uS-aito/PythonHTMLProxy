@@ -5,9 +5,12 @@ import sys
 import urllib2
 import re
 import threading
+import socket
+from contextlib import closing
 
 class ServerHandler(BaseHTTPRequestHandler):
-    def handle_http_proxy(self,method):
+    # connect以外はこちら
+    def handle_http_proxy(self):
         # スタブ用返信を送信
         # self.send_response(200)
         # self.end_headers()
@@ -129,30 +132,86 @@ class ServerHandler(BaseHTTPRequestHandler):
         print "DEBUG: Class Method is returned"
         return
 
+    # connectが飛んできたらこちら
+    def handle_https_proxy(self):
+        # スタブ用返信を送信
+        # self.send_response(200)
+        # self.end_headers()
+        # self.wfile.write("It Works!\r\n")
+
+        # リクエスト取得
+        splited_requestline = self.requestline.split()
+        print "<< HTTP Request >>"
+        print splited_requestline, "\n"
+
+        # ヘッダ取得
+        splited_request_headers = str(self.headers).split("\r\n")
+        print "<< HTTP Request Header >>"
+        print splited_request_headers, "\n"
+    
+        # ホスト名とポートを分離
+        (server_host_name, server_target_port) = tuple(splited_requestline[1].split(":"))
+        try:
+            server_target_port = int(server_target_port)
+        except:
+            print "Connect request does not include port number."
+
+        # プロキシを無視するよう設定
+        unproxy_handler = urllib2.ProxyHandler({})
+        opener = urllib2.build_opener(unproxy_handler)
+        urllib2.install_opener(opener)
+
+        # 対象サーバとTCP接続を確立
+        tunnel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        with closing(tunnel):
+            tunnel.connect((server_host_name, server_target_port))
+
+            # レスポンスをクライアントに返す
+            # httpバージョンとコード、メッセージを返す
+            self.send_response(code=200, message="Connection Established\r\n\r\n")
+            self.end_headers()
+
+            # # クライアントからのヘッダをサーバへ転送
+            # tunnel.send(str(self.headers))
+
+            # クライアントからの通信をサーバへ転送
+            ssl_data = self.rfile._sock.recv(4096)
+            print "DEBUG: ssl_data_length: " + str(len(ssl_data))
+            print "DEBUG: ssl_data:\r\n" + ssl_data
+            tunnel.send(ssl_data)
+            print "DEBUG: tunnel send"
+            # サーバからの通信をクライアントへ転送
+            ssl_response = tunnel.recv(4096)
+            print "DEBUG: ssl_response_length: " + str(len(ssl_response))
+            print "DEBUG: ssl_response_length:\r\n" + ssl_response
+            self.wfile._sock.send(ssl_response)
+
+        return
+
     # handle_http_proxyを全てのmethodに対して呼び出す
     def do_GET(self):
-        self.handle_http_proxy("GET")
+        self.handle_http_proxy()
     
     def do_HEAD(self):
-        self.handle_http_proxy("HEAD")
+        self.handle_http_proxy()
 
     def do_POST(self):
-        self.handle_http_proxy("POST")
+        self.handle_http_proxy()
 
     def do_PUT(self):
-        self.handle_http_proxy("PUT")
+        self.handle_http_proxy()
 
     def do_DELETE(self):
-        self.handle_http_proxy("DELETE")
+        self.handle_http_proxy()
 
     def do_CONNECT(self):
-        self.handle_http_proxy("CONNECT")
+        self.handle_https_proxy()
 
     def do_OPTIONS(self):
-        self.handle_http_proxy("OPTIONS")
+        self.handle_http_proxy()
 
     def do_TRACE(self):
-        self.handle_http_proxy("TRACE")
+        self.handle_http_proxy()
 
 class ThreadedHTTPProxy(ThreadingMixIn, HTTPServer):
     """ Handle requests in a separate thread. """
