@@ -79,8 +79,8 @@ class ServerHandler(BaseHTTPRequestHandler):
         print "<< HTTP Response Header >>"
         print response_info, "\n"
         response_data = response.read()     # レスポンスボディ
-        print "<< HTTP Response Body >>"
-        print response_data, "\n"
+        # print "<< HTTP Response Body >>"
+        # print response_data, "\n"
 
         # 解析用にレスポンスヘッダ整形
         dict_response_header = {}
