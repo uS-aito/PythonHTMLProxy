@@ -7,6 +7,7 @@ import re
 import threading
 import socket
 from contextlib import closing
+import select
 
 class ServerHandler(BaseHTTPRequestHandler):
     # connect以外はこちら
@@ -134,11 +135,6 @@ class ServerHandler(BaseHTTPRequestHandler):
 
     # connectが飛んできたらこちら
     def handle_https_proxy(self):
-        # スタブ用返信を送信
-        # self.send_response(200)
-        # self.end_headers()
-        # self.wfile.write("It Works!\r\n")
-
         # リクエスト取得
         splited_requestline = self.requestline.split()
         print "<< HTTP Request >>"
@@ -154,39 +150,43 @@ class ServerHandler(BaseHTTPRequestHandler):
         try:
             server_target_port = int(server_target_port)
         except:
-            print "Connect request does not include port number."
-
-        # プロキシを無視するよう設定
-        unproxy_handler = urllib2.ProxyHandler({})
-        opener = urllib2.build_opener(unproxy_handler)
-        urllib2.install_opener(opener)
+            print "This CONNECT request does not include port number. Using 443"
+            server_target_port = 443
 
         # 対象サーバとTCP接続を確立
         tunnel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        with closing(tunnel):
+        try:
             tunnel.connect((server_host_name, server_target_port))
-
-            # レスポンスをクライアントに返す
-            # httpバージョンとコード、メッセージを返す
-            self.send_response(code=200, message="Connection Established\r\n\r\n")
+            self.send_response(code=200, message="Connection established")
             self.end_headers()
-
-            # # クライアントからのヘッダをサーバへ転送
-            # tunnel.send(str(self.headers))
-
-            # クライアントからの通信をサーバへ転送
-            ssl_data = self.rfile._sock.recv(4096)
-            print "DEBUG: ssl_data_length: " + str(len(ssl_data))
-            print "DEBUG: ssl_data:\r\n" + ssl_data
-            tunnel.send(ssl_data)
-            print "DEBUG: tunnel send"
-            # サーバからの通信をクライアントへ転送
-            ssl_response = tunnel.recv(4096)
-            print "DEBUG: ssl_response_length: " + str(len(ssl_response))
-            print "DEBUG: ssl_response_length:\r\n" + ssl_response
-            self.wfile._sock.send(ssl_response)
+            self.tunnel_packet(tunnel, 300)
+        finally:
+            tunnel.close()
+            self.connection.close()
 
         return
+    # パケットを中継する
+    def tunnel_packet(self, srv_soc, max_idle_count = 20):
+        rlist = [self.connection, srv_soc]
+        wlist = []
+        idle_count = 0
+        while True:
+            idle_count += 1
+            (rlist_standby, _, xlist_standby) = select.select(rlist, wlist, rlist)
+            if xlist_standby:
+                break
+            if rlist_standby:
+                for r_obj in rlist_standby:
+                    if r_obj is srv_soc:
+                        output_if = self.connection
+                    else:
+                        output_if = srv_soc
+                    recv_data = r_obj.recv(4096)
+                    if recv_data:
+                        output_if.send(recv_data)
+                        idle_count = 0
+            if idle_count == max_idle_count:
+                break
 
     # handle_http_proxyを全てのmethodに対して呼び出す
     def do_GET(self):
