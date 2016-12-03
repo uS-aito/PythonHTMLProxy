@@ -8,24 +8,16 @@ import threading
 import socket
 from contextlib import closing
 import select
+import urlparse
 
 class ServerHandler(BaseHTTPRequestHandler):
     # connect以外はこちら
     def handle_http_proxy(self):
-        # スタブ用返信を送信
-        # self.send_response(200)
-        # self.end_headers()
-        # self.wfile.write("It Works!\r\n")
-
         # リクエスト取得
-        splited_requestline = self.requestline.split()
-        print "<< HTTP Request >>"
-        print splited_requestline, "\n"
+        splited_requestline = self.get_requestline()
 
         # ヘッダ取得
-        splited_request_headers = str(self.headers).split("\r\n")
-        print "<< HTTP Request Header >>"
-        print splited_request_headers, "\n"
+        splited_request_headers = self.get_header()
 
         # ヘッダ整形
         dict_request_header = {}
@@ -34,129 +26,58 @@ class ServerHandler(BaseHTTPRequestHandler):
             dict_request_header.update({splited_request_header[0]:splited_request_header[1]})
         print "<< HTTP Header in Dictionary >>"
         print dict_request_header, "\n"
+
+        # ヘッダを修正
+        dict_request_header["Connection"] = "Close" # TCPコネクションを継続しない
+        re_PC_patter = re.compile("Proxy-Connection",re.IGNORECASE) # Proxy-Connectionヘッダを削除
+        for key in dict_request_header.keys():
+            re_PC_match_result = re_PC_patter.match(key)
+            if re_PC_match_result:
+                del dict_request_header[key]
     
         # リクエストurlを取得
-        url_pattern = r"[https?://]?.*[:[0-9]*]?/?"
-        re_url_match_result = re.match(url_pattern,splited_requestline[1])
-        if re_url_match_result:
-            url = re_url_match_result.group()
-            # connectメソッドはスキームをつけてこないのでつける
-            if splited_requestline[0] == "CONNECT" or splited_requestline == "connect":
-                url = "http://"+url
-        else:
-            print "Any url does not exist in request line."
-            exit(-1)
+        parsed_url = urlparse.urlparse(splited_requestline[1])
+        if parsed_url.netloc == "":
+            print "Invalid request URL"
+            return
+        
+        # 対象サーバとTCP接続を確立
+        tunnel = self.connect_tcp(parsed_url.netloc)
+        if tunnel is "":
+            return
+        try:
+            # リクエストを送信
+            tunnel.send("%s %s %s\r\n" % (
+                splited_requestline[0],
+                urlparse.urlunparse(
+                    ("","",parsed_url.path,parsed_url.params,parsed_url.query,"")),
+                splited_requestline[2]
+                ))
+            # ヘッダを送信
+            for key in dict_request_header.items():
+                tunnel.send("%s: %s\r\n" % key)
+            tunnel.send("\r\n")
+            # パケットを中継
+            self.tunnel_packet(tunnel, 300)
+        finally:
+            tunnel.close()
+            self.connection.close()
 
-        # Content-Lengthを含むかチェック
-        content_len = 0
-        re_CL_patter = re.compile("Content-Length",re.IGNORECASE)  
-        for key in dict_request_header.keys():
-            re_CL_match_result = re_CL_patter.match(key)
-            if re_CL_match_result:
-                try:
-                    content_len = int(dict_request_header[key])
-                    http_body = self.rfile.read(content_len)
-                except:
-                    pass
-
-        # プロキシを無視するよう設定
-        unproxy_handler = urllib2.ProxyHandler({})
-        opener = urllib2.build_opener(unproxy_handler)
-        urllib2.install_opener(opener)
-
-        # ヘッダくっつけてメソッド指定して投げる
-        if(content_len):
-            req = urllib2.Request(url=url,headers=dict_request_header,data=http_body)
-        else:                
-            req = urllib2.Request(url=url,headers=dict_request_header)
-        req.get_method = lambda : splited_requestline[0]
-        response = urllib2.urlopen(req)
-
-        # レスポンス確認
-        print "<< HTTP Response >>"
-        print (response.code, response.msg), "\n" # コードとメッセージ
-        response_info = response.info()     # レスポンスヘッダ
-        print "<< HTTP Response Header >>"
-        print response_info, "\n"
-        response_data = response.read()     # レスポンスボディ
-        # print "<< HTTP Response Body >>"
-        # print response_data, "\n"
-
-        # 解析用にレスポンスヘッダ整形
-        dict_response_header = {}
-        splited_response_headers = str(response_info).split("\r\n")
-        for header in splited_response_headers[:-1]:     # ヘッダ末尾の空行まで含むため
-            splited_response_header = header.split(": ")
-            dict_response_header.update({splited_response_header[0]:splited_response_header[1]})
-        print "<< HTTP Response Header in Dictionary >>"
-        print dict_response_header, "\n"
-
-        # ヘッダ解釈
-        # Transfer-EncodingにChunkが含まれるか確認
-        is_chunked = False
-        re_TE_patter = re.compile("Transfer-Encoding",re.IGNORECASE)  # HTTPヘッダは大文字小文字無視するので
-        re_chunked_patter = re.compile("chunked",re.IGNORECASE)       # その設定の正規表現で検索する必要
-        for key in dict_response_header.keys():
-            re_TE_match_result = re_TE_patter.match(key)
-            if re_TE_match_result:
-                re_chunked_match_result = re_chunked_patter.match(dict_response_header[key])
-                if re_chunked_match_result:
-                    is_chunked = True 
-                    break
-        print "<< HTTP Response Header Analyse Result >>"
-        print "is_chunked:", is_chunked, "\n"
-
-        # レスポンスをクライアントに返す
-        # httpバージョンとコード、メッセージを返す
-        self.send_response(code=response.code, message=response.msg)
-        print "DEBUG: HTTP response is send"
-        # ヘッダを返す
-        splited_response_headers = str(response_info).split("\r\n")
-        for response_header in splited_response_headers[:-1]:
-            splited_response_header = response_header.split(": ")
-            self.send_header(splited_response_header[0],
-                splited_response_header[1])
-        print "DEBUG: HTTP header is send"
-        # ヘッダをクローズする
-        self.end_headers()
-        print "DEBUG: HTTP header is closed"
-        # レスポンスを返す
-        # Chunkedが指定されている場合長さを返す
-        if is_chunked:
-            self.wfile.write("%x\r\n" % len(response_data))
-        # ボディそのものを返す
-        self.wfile.write(response_data+"\r\n")
-        print "DEBUG: HTTP body is send"
-        # Chunkedが指定されている場合0と空行を返す
-        if is_chunked:
-            self.wfile.write("0\r\n\r\n")
-        print "DEBUG: Class Method is returned"
         return
 
     # connectが飛んできたらこちら
     def handle_https_proxy(self):
         # リクエスト取得
-        splited_requestline = self.requestline.split()
-        print "<< HTTP Request >>"
-        print splited_requestline, "\n"
+        splited_requestline = self.get_requestline()
 
         # ヘッダ取得
-        splited_request_headers = str(self.headers).split("\r\n")
-        print "<< HTTP Request Header >>"
-        print splited_request_headers, "\n"
+        splited_request_headers = self.get_header()
     
-        # ホスト名とポートを分離
-        (server_host_name, server_target_port) = tuple(splited_requestline[1].split(":"))
-        try:
-            server_target_port = int(server_target_port)
-        except:
-            print "This CONNECT request does not include port number. Using 443"
-            server_target_port = 443
-
         # 対象サーバとTCP接続を確立
-        tunnel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tunnel = self.connect_tcp(splited_requestline[1])
+        if tunnel is "":
+            return
         try:
-            tunnel.connect((server_host_name, server_target_port))
             self.send_response(code=200, message="Connection established")
             self.end_headers()
             self.tunnel_packet(tunnel, 300)
@@ -187,6 +108,46 @@ class ServerHandler(BaseHTTPRequestHandler):
                         idle_count = 0
             if idle_count == max_idle_count:
                 break
+    
+    # リクエスト取得関数
+    def get_requestline(self):
+        splited_requestline = self.requestline.split()
+        print "<< HTTP Request >>"
+        print splited_requestline, "\n"
+        return splited_requestline
+
+    # ヘッダ取得関数
+    def get_header(self):
+        splited_request_headers = str(self.headers).split("\r\n")
+        print "<< HTTP Request Header >>"
+        print splited_request_headers, "\n"
+        return splited_request_headers
+    
+    # TCP接続関数
+    def connect_tcp(self,netloc):
+        # ホスト名とポートを分離 (何らかの理由でポート番号を変換できない場合空を返す)
+        if ":" in netloc:
+            (server_host_name, server_target_port) = tuple(netloc.split(":"))
+            try:
+                server_target_port = int(server_target_port)
+            except:
+                print "Invalid request port"
+                return ""
+        else:
+            (server_host_name, server_target_port) = (netloc,80)
+        
+        # TCP接続開始
+        tunnel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            tunnel.connect((server_host_name, server_target_port))
+        except socket.error,arg:
+            try:
+                msg = arg[1]
+            except:
+                msg = arg
+            self.send_error(404,msg)
+            return ""
+        return tunnel
 
     # handle_http_proxyを全てのmethodに対して呼び出す
     def do_GET(self):
