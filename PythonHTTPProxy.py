@@ -13,20 +13,11 @@ import urlparse
 class ServerHandler(BaseHTTPRequestHandler):
     # connect以外はこちら
     def handle_http_proxy(self):
-        # スタブ用返信を送信
-        # self.send_response(200)
-        # self.end_headers()
-        # self.wfile.write("It Works!\r\n")
-
         # リクエスト取得
-        splited_requestline = self.requestline.split()
-        print "<< HTTP Request >>"
-        print splited_requestline, "\n"
+        splited_requestline = self.get_requestline()
 
         # ヘッダ取得
-        splited_request_headers = str(self.headers).split("\r\n")
-        print "<< HTTP Request Header >>"
-        print splited_request_headers, "\n"
+        splited_request_headers = self.get_header()
 
         # ヘッダ整形
         dict_request_header = {}
@@ -54,13 +45,14 @@ class ServerHandler(BaseHTTPRequestHandler):
         (server_host_name, server_target_port) = tuple(parsed_url.netloc.split(":"))
         try:
             server_target_port = int(server_target_port)
-        raise:
+        except:
             server_target_port = 80
 
         # 対象サーバとTCP接続を確立
-        tunnel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tunnel = self.connect_tcp(parsed_url.netloc)
+        if tunnel is "":
+            return
         try:
-            tunnel.connect((server_host_name, server_target_port))
             # リクエストを送信
             tunnel.send("%s %s %s\r\n" % (
                 splited_requestline[0],
@@ -83,14 +75,10 @@ class ServerHandler(BaseHTTPRequestHandler):
     # connectが飛んできたらこちら
     def handle_https_proxy(self):
         # リクエスト取得
-        splited_requestline = self.requestline.split()
-        print "<< HTTP Request >>"
-        print splited_requestline, "\n"
+        splited_requestline = self.get_requestline()
 
         # ヘッダ取得
-        splited_request_headers = str(self.headers).split("\r\n")
-        print "<< HTTP Request Header >>"
-        print splited_request_headers, "\n"
+        splited_request_headers = self.get_header()
     
         # ホスト名とポートを分離
         (server_host_name, server_target_port) = tuple(splited_requestline[1].split(":"))
@@ -101,7 +89,9 @@ class ServerHandler(BaseHTTPRequestHandler):
             server_target_port = 443
 
         # 対象サーバとTCP接続を確立
-        tunnel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tunnel = self.connect_tcp(parsed_url.netloc)
+        if tunnel is "":
+            return
         try:
             tunnel.connect((server_host_name, server_target_port))
             self.send_response(code=200, message="Connection established")
@@ -134,6 +124,43 @@ class ServerHandler(BaseHTTPRequestHandler):
                         idle_count = 0
             if idle_count == max_idle_count:
                 break
+    
+    # リクエスト取得関数
+    def get_requestline(self):
+        splited_requestline = self.requestline.split()
+        print "<< HTTP Request >>"
+        print splited_requestline, "\n"
+        return splited_requestline
+
+    # ヘッダ取得関数
+    def get_header(self):
+        splited_request_headers = str(self.headers).split("\r\n")
+        print "<< HTTP Request Header >>"
+        print splited_request_headers, "\n"
+        return splited_request_headers
+    
+    # TCP接続関数
+    def connect_tcp(self,netloc):
+        # ホスト名とポートを分離 (何らかの理由でポート番号を変換できない場合空を返す)
+        (server_host_name, server_target_port) = tuple(netloc.split(":"))
+        try:
+            server_target_port = int(server_target_port)
+        except:
+            print "Invalid request port"
+            return ""
+        
+        # TCP接続開始
+        tunnel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            tunnel.connect((server_host_name, server_target_port))
+        except socket.error,arg:
+            try:
+                msg = arg[1]
+            except:
+                msg = arg
+            self.send_error(404,msg)
+            return ""
+        return tunnel
 
     # handle_http_proxyを全てのmethodに対して呼び出す
     def do_GET(self):
