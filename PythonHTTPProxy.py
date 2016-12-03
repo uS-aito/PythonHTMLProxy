@@ -41,13 +41,6 @@ class ServerHandler(BaseHTTPRequestHandler):
             print "Invalid request URL"
             return
         
-        # ホスト名とポートを分離
-        (server_host_name, server_target_port) = tuple(parsed_url.netloc.split(":"))
-        try:
-            server_target_port = int(server_target_port)
-        except:
-            server_target_port = 80
-
         # 対象サーバとTCP接続を確立
         tunnel = self.connect_tcp(parsed_url.netloc)
         if tunnel is "":
@@ -80,20 +73,11 @@ class ServerHandler(BaseHTTPRequestHandler):
         # ヘッダ取得
         splited_request_headers = self.get_header()
     
-        # ホスト名とポートを分離
-        (server_host_name, server_target_port) = tuple(splited_requestline[1].split(":"))
-        try:
-            server_target_port = int(server_target_port)
-        except:
-            print "This CONNECT request does not include port number. Using 443"
-            server_target_port = 443
-
         # 対象サーバとTCP接続を確立
-        tunnel = self.connect_tcp(parsed_url.netloc)
+        tunnel = self.connect_tcp(splited_requestline[1])
         if tunnel is "":
             return
         try:
-            tunnel.connect((server_host_name, server_target_port))
             self.send_response(code=200, message="Connection established")
             self.end_headers()
             self.tunnel_packet(tunnel, 300)
@@ -142,12 +126,15 @@ class ServerHandler(BaseHTTPRequestHandler):
     # TCP接続関数
     def connect_tcp(self,netloc):
         # ホスト名とポートを分離 (何らかの理由でポート番号を変換できない場合空を返す)
-        (server_host_name, server_target_port) = tuple(netloc.split(":"))
-        try:
-            server_target_port = int(server_target_port)
-        except:
-            print "Invalid request port"
-            return ""
+        if ":" in netloc:
+            (server_host_name, server_target_port) = tuple(netloc.split(":"))
+            try:
+                server_target_port = int(server_target_port)
+            except:
+                print "Invalid request port"
+                return ""
+        else:
+            (server_host_name, server_target_port) = (netloc,80)
         
         # TCP接続開始
         tunnel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
