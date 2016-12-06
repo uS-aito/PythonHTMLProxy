@@ -11,6 +11,16 @@ import select
 import urlparse
 
 class ServerHandler(BaseHTTPRequestHandler):
+
+    def __init__(self,request,client_addr,server):
+        # 送受信しているデータを保存する変数
+        # 参照を渡したほうがスムーズなのでリストを使用
+        self.recv_data = [""]
+        self.send_data = [""]
+        # 接続情報を保存するクラス
+        self.connection_info = ConnectionInfo()
+        BaseHTTPRequestHandler.__init__(self,request,client_addr,server)
+
     # connect以外はこちら
     def handle_http_proxy(self):
         # リクエスト取得
@@ -24,8 +34,8 @@ class ServerHandler(BaseHTTPRequestHandler):
         for header in splited_request_headers[:-1]:     # ヘッダ末尾の空行まで含むため
             splited_request_header = header.split(": ")
             dict_request_header.update({splited_request_header[0]:splited_request_header[1]})
-        print "<< HTTP Header in Dictionary >>"
-        print dict_request_header, "\n"
+        # print "<< HTTP Header in Dictionary >>"
+        # print dict_request_header, "\n"
 
         # ヘッダを修正
         dict_request_header["Connection"] = "Close" # TCPコネクションを継続しない
@@ -60,6 +70,22 @@ class ServerHandler(BaseHTTPRequestHandler):
             # パケットを中継
             self.tunnel_packet(tunnel, 300)
         finally:
+            # リクエストを解析し格納
+            self.connection_info.request = " ".join(splited_requestline)
+            self.connection_info.request_header = "\r\n".join(splited_request_headers)
+            self.connection_info.request_body = self.send_data[0]
+
+            # レスポンスを解析し格納
+            response_firstline_end_pos = self.recv_data[0].find("\r\n")
+            response_header_end_pos = self.recv_data[0].find("\r\n\r\n")
+            self.connection_info.response = \
+             self.recv_data[0][:response_firstline_end_pos]
+            self.connection_info.response_header = \
+             self.recv_data[0][response_firstline_end_pos+1:response_header_end_pos]
+            self.connection_info.response_body = \
+             self.recv_data[0][response_header_end_pos+1:]
+
+            # サーバ側・クライアント側コネクションを終了
             tunnel.close()
             self.connection.close()
 
@@ -78,7 +104,7 @@ class ServerHandler(BaseHTTPRequestHandler):
         if tunnel is "":
             return
         try:
-            self.send_response(code=200, message="Connection established")
+            self.send_response(code=200, message="Connection Established")
             self.end_headers()
             self.tunnel_packet(tunnel, 300)
         finally:
@@ -100,11 +126,14 @@ class ServerHandler(BaseHTTPRequestHandler):
                 for r_obj in rlist_standby:
                     if r_obj is srv_soc:
                         output_if = self.connection
+                        tgt_stream = self.recv_data
                     else:
                         output_if = srv_soc
-                    recv_data = r_obj.recv(4096)
-                    if recv_data:
-                        output_if.send(recv_data)
+                        tgt_stream = self.send_data
+                    tmp_data = r_obj.recv(4096)
+                    tgt_stream[0] += tmp_data
+                    if tmp_data:
+                        output_if.send(tmp_data)
                         idle_count = 0
             if idle_count == max_idle_count:
                 break
@@ -112,15 +141,15 @@ class ServerHandler(BaseHTTPRequestHandler):
     # リクエスト取得関数
     def get_requestline(self):
         splited_requestline = self.requestline.split()
-        print "<< HTTP Request >>"
-        print splited_requestline, "\n"
+        # print "<< HTTP Request >>"
+        # print splited_requestline, "\n"
         return splited_requestline
 
     # ヘッダ取得関数
     def get_header(self):
         splited_request_headers = str(self.headers).split("\r\n")
-        print "<< HTTP Request Header >>"
-        print splited_request_headers, "\n"
+        # print "<< HTTP Request Header >>"
+        # print splited_request_headers, "\n"
         return splited_request_headers
     
     # TCP接続関数
@@ -176,6 +205,16 @@ class ServerHandler(BaseHTTPRequestHandler):
 
 class ThreadedHTTPProxy(ThreadingMixIn, HTTPServer):
     """ Handle requests in a separate thread. """
+
+# 接続情報を保存するクラス
+class ConnectionInfo:
+    def __init__(self):
+        self.request = ""
+        self.request_header = ""
+        self.request_body = ""
+        self.response = ""
+        self.response_header = ""
+        self.response_body = ""
 
 if __name__ == "__main__":
     if len(sys.argv) == 2:
