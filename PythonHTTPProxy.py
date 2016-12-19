@@ -24,8 +24,8 @@ class ServerHandler(BaseHTTPRequestHandler):
         for header in splited_request_headers[:-1]:     # ヘッダ末尾の空行まで含むため
             splited_request_header = header.split(": ")
             dict_request_header.update({splited_request_header[0]:splited_request_header[1]})
-        print "<< HTTP Header in Dictionary >>"
-        print dict_request_header, "\n"
+        # print "<< HTTP Header in Dictionary >>"
+        # print dict_request_header, "\n"
 
         # ヘッダを修正
         dict_request_header["Connection"] = "Close" # TCPコネクションを継続しない
@@ -112,15 +112,15 @@ class ServerHandler(BaseHTTPRequestHandler):
     # リクエスト取得関数
     def get_requestline(self):
         splited_requestline = self.requestline.split()
-        print "<< HTTP Request >>"
-        print splited_requestline, "\n"
+        # print "<< HTTP Request >>"
+        # print splited_requestline, "\n"
         return splited_requestline
 
     # ヘッダ取得関数
     def get_header(self):
         splited_request_headers = str(self.headers).split("\r\n")
-        print "<< HTTP Request Header >>"
-        print splited_request_headers, "\n"
+        # print "<< HTTP Request Header >>"
+        # print splited_request_headers, "\n"
         return splited_request_headers
     
     # TCP接続関数
