@@ -10,21 +10,19 @@ from contextlib import closing
 import select
 import urlparse
 
-class ServerHandler(BaseHTTPRequestHandler):
+class ProxyHandler(BaseHTTPRequestHandler):
 
     def __init__(self,request,client_addr,server):
         # 送受信しているデータを保存する変数
         # 参照を渡したほうがスムーズなのでリストを使用
         self.recv_data = [""]
         self.send_data = [""]
-        # 接続情報を保存するクラス
-        self.connection_info = ConnectionInfo()
         BaseHTTPRequestHandler.__init__(self,request,client_addr,server)
-        # コールバック関数
-        self.callback = lambda: None
 
     # connect以外はこちら
     def handle_http_proxy(self):
+        # 接続情報を保存するクラス
+        self.connection_info = ConnectionInfo()
         # リクエスト取得
         splited_requestline = self.get_requestline()
 
@@ -71,6 +69,7 @@ class ServerHandler(BaseHTTPRequestHandler):
             tunnel.send("\r\n")
             # パケットを中継
             self.tunnel_packet(tunnel, 300)
+            
         finally:
             # リクエストを解析し格納
             self.connection_info.request = " ".join(splited_requestline)
@@ -91,6 +90,7 @@ class ServerHandler(BaseHTTPRequestHandler):
             tunnel.close()
             self.connection.close()
 
+        self.callback(self.connection_info)
         return
 
     # connectが飛んできたらこちら
@@ -180,8 +180,9 @@ class ServerHandler(BaseHTTPRequestHandler):
             return ""
         return tunnel
     
-    def set_callback(self,arg_callback):
-        self.callback = arg_callback
+    # コールバック関数、上書き用
+    def callback(self,ConnectionInfo):
+        pass
 
     # handle_http_proxyを全てのmethodに対して呼び出す
     def do_GET(self):
@@ -209,11 +210,8 @@ class ServerHandler(BaseHTTPRequestHandler):
         self.handle_http_proxy()
 
 class ThreadedHTTPProxy(ThreadingMixIn, HTTPServer):
-    def start_proxy(self,callback = lambda: None):
-        if hasattr(self,"set_callback"):
-            self.set_callback(callback)
-        self.serve_forever()
-    
+    　pass
+
 # 接続情報を保存するクラス
 class ConnectionInfo:
     def __init__(self):
@@ -232,10 +230,7 @@ if __name__ == "__main__":
             port = 80
     else:
         port = 80
-    
-    Handler = ServerHandler
-    server = ThreadedHTTPProxy(("",port), Handler)
+
+    server = ThreadedHTTPProxy(("",port), ProxyHandler)
     print "Starting server in " + str(port)
-    def print_test():
-        print "callback func is called."
-    server.start_proxy(print_test)
+    server.serve_forever()
