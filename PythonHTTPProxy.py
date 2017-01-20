@@ -209,8 +209,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def do_TRACE(self):
         self.handle_http_proxy()
 
-class ThreadedHTTPProxy(ThreadingMixIn, HTTPServer):
-    　pass
+class HTTPProxy(object):
+    class ThreadedHTTPProxy(ThreadingMixIn, HTTPServer):
+        pass
+
+    def __init__(self,address = ("",80),Handler = BaseHTTPRequestHandler):
+        self.proxy = self.ThreadedHTTPProxy(address,Handler)
+
+    def serve_forever(self):
+        self.proxy.serve_forever()
 
 # 接続情報を保存するクラス
 class ConnectionInfo:
@@ -231,6 +238,6 @@ if __name__ == "__main__":
     else:
         port = 80
 
-    server = ThreadedHTTPProxy(("",port), ProxyHandler)
+    server = HTTPProxy(("",port), ProxyHandler)
     print "Starting server in " + str(port)
     server.serve_forever()
